@@ -21,6 +21,33 @@ Farmer → Market Prices → AI Recommendation → Net Realisation → Buyer Mat
 
 ---
 
+## Product tour
+
+The screenshots below show the seeded farmer demo, from role entry through market decisions,
+buyer matching, crop intelligence, logistics and payments.
+
+| Role entry | Farmer dashboard |
+| --- | --- |
+| ![AgriLink role entry](docs/screenshots/login.png) | ![Farmer dashboard](docs/screenshots/dashboard.png) |
+
+| My lots | Buyer marketplace |
+| --- | --- |
+| ![My lots](docs/screenshots/lots.png) | ![Buyer marketplace](docs/screenshots/buyer-marketplace.png) |
+
+| Orders and logistics | AI copilot |
+| --- | --- |
+| ![Orders and logistics](docs/screenshots/orders-logistics.png) | ![AI copilot](docs/screenshots/ai-copilot.png) |
+
+| Lab and crop health | Crop planner |
+| --- | --- |
+| ![Lab and crop health](docs/screenshots/lab-crop-health.png) | ![Crop planner](docs/screenshots/crop-planner.png) |
+
+| Net realisation | Payments |
+| --- | --- |
+| ![Net realisation calculator](docs/screenshots/net-realisation.png) | ![Payments](docs/screenshots/payments.png) |
+
+---
+
 ## ✨ What's implemented
 
 | Role            | Key screens                                                                                                                                                                                                                                                                      |
