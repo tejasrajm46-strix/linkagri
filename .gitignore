@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+.env
+.env.local
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+npm-debug.log*
+# Local dev-server output and OS junk — never committed, never deployed
+*.log
+desktop.ini
+# Private uploaded files (lab reports / crop images) — never committed or served publicly
+.uploads/
+# Local smoke-test artefacts and scratch scripts
+.smoke*
+.tmp*

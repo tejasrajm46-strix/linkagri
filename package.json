@@ -1,0 +1,49 @@
+{
+  "name": "agrilink",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AgriLink — Smart Farmer Market Intelligence, Price Discovery & Transaction Platform (SIH PS 26132)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "node scripts/start.mjs",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:push": "prisma db push",
+    "db:seed": "prisma db seed",
+    "db:setup": "docker compose up -d && prisma db push && prisma db seed",
+    "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "5.22.0",
+    "bcryptjs": "2.4.3",
+    "jsonwebtoken": "9.0.2",
+    "next": "^15.5.24",
+    "openai": "4.77.0",
+    "pdf-parse": "^2.4.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tsx": "^4.23.15",
+    "zod": "3.23.8"
+  },
+  "overrides": {
+    "postcss": "^8.5.28"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "2.4.6",
+    "@types/jsonwebtoken": "9.0.7",
+    "@types/node": "20.16.10",
+    "@types/react": "18.3.10",
+    "@types/react-dom": "18.3.0",
+    "autoprefixer": "10.4.20",
+    "postcss": "^8.5.28",
+    "prisma": "5.22.0",
+    "tailwindcss": "3.4.13",
+    "typescript": "5.6.2"
+  }
+}

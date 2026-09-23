@@ -1,0 +1,746 @@
+// ─── AgriLink Prisma schema ──────────────────────────────────────────────────
+// Core relational model for SIH PS 26132 (farmer market intelligence platform)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  FARMER
+  FPO
+  BUYER
+  TRANSPORTER
+  ADMIN
+}
+
+enum OfferStatus {
+  SUBMITTED
+  COUNTERED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  WITHDRAWN
+}
+
+enum OrderStatus {
+  DRAFT
+  LISTED
+  OFFER_RECEIVED
+  NEGOTIATING
+  ACCEPTED
+  PICKUP_SCHEDULED
+  IN_TRANSIT
+  DELIVERED
+  PAYMENT_PENDING
+  PAID
+  CLOSED
+  CANCELLED
+}
+
+enum LogisticsStatus {
+  PENDING
+  PICKUP_SCHEDULED
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  DISPUTED
+  OVERDUE
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  EVIDENCE_REQUESTED
+  RESOLVED
+  ESCALATED
+  CLOSED
+}
+
+enum DisputeType {
+  PAYMENT_ISSUE
+  QUANTITY_MISMATCH
+  QUALITY_DISPUTE
+  DELIVERY_PROBLEM
+  PRICE_OFFER_DISPUTE
+  DAMAGE_LOSS
+  MISCONDUCT
+}
+
+enum LotStatus {
+  DRAFT
+  LISTED
+  OFFER_RECEIVED
+  NEGOTIATING
+  BOOKED
+  SOLD
+  WITHDRAWN
+}
+
+model User {
+  id             String   @id @default(cuid())
+  name           String
+  email          String   @unique
+  password       String // bcrypt hash
+  phone          String?
+  role           Role     @default(FARMER)
+  verified       Boolean  @default(false)
+  // Bumped on logout so previously-issued JWTs are revoked server-side.
+  sessionVersion Int      @default(0)
+  avatarColor    String   @default("#388e3c")
+  createdAt      DateTime @default(now())
+
+  farmerProfile   FarmerProfile?
+  buyerProfile    BuyerProfile?
+  transporter     Transporter?
+  fpoAdminOf      Fpo[]          @relation("FpoAdmin")
+  fpoMemberships  FpoMember[]
+  lots            Lot[]
+  offers          Offer[]        @relation("OffersByBuyer")
+  buyerDemands    BuyerDemand[]
+  disputes        Dispute[]
+  notifications   Notification[]
+  chatSessions    ChatSession[]
+  auditLogs       AuditLog[]
+  paymentsMade    Payment[]      @relation("Payer")
+  paymentsDue     Payment[]      @relation("Payee")
+  logisticsDriver Logistics[]    @relation("Driver")
+  ordersSold      Order[]        @relation("Seller")
+  ordersBought    Order[]        @relation("Buyer")
+  labRequests     LabTestRequest[]      @relation("LabRequests")
+  labReports      LabReport[]           @relation("LabReports")
+  cropImages      CropHealthImage[]     @relation("CropImages")
+  cropCases       CropHealthCase[]      @relation("CropCases")
+  expertAsks      ExpertConsultation[]  @relation("ExpertAsks")
+  cropPlans       CropPlan[]            @relation("CropPlans")
+  plannerActions  PlannerActivity[]     @relation("PlannerActor")
+
+  @@index([role])
+}
+
+model FarmerProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  village       String?
+  district      String   @default("Ramanagara")
+  state         String   @default("Karnataka")
+  farmSizeAcres Float?
+  primaryCrops  String[]
+  aadhaarLast4  String?
+  language      String   @default("en")
+}
+
+model Fpo {
+  id        String      @id @default(cuid())
+  name      String
+  adminId   String
+  admin     User        @relation("FpoAdmin", fields: [adminId], references: [id])
+  district  String
+  state     String      @default("Karnataka")
+  verified  Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  members   FpoMember[]
+  lots      Lot[]
+}
+
+model FpoMember {
+  id       String   @id @default(cuid())
+  fpoId    String
+  fpo      Fpo      @relation(fields: [fpoId], references: [id])
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  joinedAt DateTime @default(now())
+
+  @@unique([fpoId, userId])
+}
+
+model BuyerProfile {
+  id                String  @id @default(cuid())
+  userId            String  @unique
+  user              User    @relation(fields: [userId], references: [id])
+  companyName       String
+  gstin             String?
+  district          String  @default("Bengaluru")
+  needs             String?
+  reliability       Int     @default(85) // 0-100
+  paymentScore      Int     @default(85) // 0-100
+  fulfilmentRate    Int     @default(90) // 0-100
+  avgPaymentDays    Int     @default(2)
+  fssaiLicense      String?
+  documentsVerified Boolean @default(false)
+}
+
+model Transporter {
+  id            String  @id @default(cuid())
+  userId        String  @unique
+  user          User    @relation(fields: [userId], references: [id])
+  vehicleType   String  @default("Mini truck")
+  vehicleNumber String?
+  capacityKg    Int     @default(2000)
+  serviceArea   String  @default("Bengaluru Rural")
+  verified      Boolean @default(false)
+}
+
+model Crop {
+  id       String          @id @default(cuid())
+  name     String
+  category String          @default("Vegetables")
+  unit     String          @default("kg")
+  icon     String          @default("🌿")
+  markets  MarketPrice[]
+  arrivals MarketArrival[]
+  lots     Lot[]
+  demands  BuyerDemand[]
+  plans    CropPlan[]
+}
+
+model Market {
+  id         String          @id @default(cuid())
+  name       String // e.g. APMC Bengaluru
+  city       String
+  district   String
+  // Distance from the demo base (Ramanagara) in km — used by the UI/demo.
+  distanceKm Float           @default(0)
+  source     String          @default("APMC / e-mandi feed")
+  enabled    Boolean         @default(true)
+  prices     MarketPrice[]
+  arrivals   MarketArrival[]
+}
+
+model MarketPrice {
+  id        String   @id @default(cuid())
+  marketId  String
+  market    Market   @relation(fields: [marketId], references: [id])
+  cropId    String
+  crop      Crop     @relation(fields: [cropId], references: [id])
+  date      DateTime @db.Date
+  minPrice  Float // ₹/kg
+  maxPrice  Float
+  avgPrice  Float
+  unit      String   @default("kg")
+  source    String   @default("APMC / e-mandi feed")
+  fetchedAt DateTime @default(now())
+
+  @@unique([marketId, cropId, date])
+  @@index([cropId, date])
+}
+
+model MarketArrival {
+  id         String   @id @default(cuid())
+  marketId   String
+  market     Market   @relation(fields: [marketId], references: [id])
+  cropId     String
+  crop       Crop     @relation(fields: [cropId], references: [id])
+  date       DateTime @db.Date
+  quantityKg Float
+  unit       String   @default("kg")
+
+  @@unique([marketId, cropId, date])
+  @@index([cropId, date])
+}
+
+model Lot {
+  id             String          @id @default(cuid())
+  lotNo          String          @unique // human id, e.g. AG12452
+  farmerId       String
+  farmer         User            @relation(fields: [farmerId], references: [id])
+  fpoId          String?
+  fpo            Fpo?            @relation(fields: [fpoId], references: [id])
+  cropId         String
+  crop           Crop            @relation(fields: [cropId], references: [id])
+  variety        String?
+  quantityKg     Float
+  unit           String          @default("kg")
+  grade          String          @default("A")
+  qualityScore   Int             @default(85)
+  harvestDate    DateTime?
+  availableDate  DateTime
+  location       String          @default("Ramanagara")
+  expectedPrice  Float
+  minPrice       Float
+  packaging      String?
+  storage        String?
+  notes          String?
+  photos         String[]        @default([])
+  status         LotStatus       @default(DRAFT)
+  createdAt      DateTime        @default(now())
+  qualityReports QualityReport[]
+  offers         Offer[]
+  orders         Order[]
+  disputes       Dispute[]
+  labRequests    LabTestRequest[]
+  labReports     LabReport[]
+  cropPlan       CropPlan?
+
+  @@index([farmerId])
+  @@index([status])
+}
+
+model QualityReport {
+  id          String   @id @default(cuid())
+  lotId       String
+  lot         Lot      @relation(fields: [lotId], references: [id])
+  grade       String?
+  size        String?
+  moisture    String?
+  defects     String?
+  freshness   String?
+  inspector   String?
+  inspectedAt DateTime @default(now())
+  notes       String?
+}
+
+model BuyerDemand {
+  id         String    @id @default(cuid())
+  buyerId    String
+  buyer      User      @relation(fields: [buyerId], references: [id])
+  cropId     String
+  crop       Crop      @relation(fields: [cropId], references: [id])
+  quantityKg Float
+  grade      String    @default("A")
+  maxPrice   Float?
+  location   String    @default("Bengaluru")
+  requiredBy DateTime?
+  status     String    @default("ACTIVE")
+  createdAt  DateTime  @default(now())
+
+  @@index([status])
+}
+
+model Offer {
+  id         String      @id @default(cuid())
+  offerNo    String      @unique
+  lotId      String
+  lot        Lot         @relation(fields: [lotId], references: [id])
+  buyerId    String
+  buyer      User        @relation("OffersByBuyer", fields: [buyerId], references: [id])
+  quantityKg Float
+  pricePerKg Float
+  status     OfferStatus @default(SUBMITTED)
+  message    String?
+  expiresAt  DateTime?
+  history    Json        @default("[]")
+  createdAt  DateTime    @default(now())
+  orders     Order[]
+
+  @@index([lotId])
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  orderNo         String      @unique // e.g. AG-1001
+  lotId           String?
+  lot             Lot?        @relation(fields: [lotId], references: [id])
+  offerId         String?    @unique
+  offer           Offer?      @relation(fields: [offerId], references: [id])
+  sellerId        String
+  seller          User        @relation("Seller", fields: [sellerId], references: [id])
+  buyerId         String
+  buyer           User        @relation("Buyer", fields: [buyerId], references: [id])
+  fpoId           String?
+  cropName        String
+  quantityKg      Float
+  pricePerKg      Float
+  totalAmount     Float
+  advanceAmount   Float       @default(0)
+  paidAmount      Float       @default(0)
+  status          OrderStatus @default(DRAFT)
+  timeline        Json        @default("[]") // [{status, at, note}]
+  pickupAddress   String?
+  deliveryAddress String?
+  dueDate         DateTime?
+  createdAt       DateTime    @default(now())
+  logistics       Logistics[]
+  payments        Payment[]
+  disputes        Dispute[]
+
+  @@index([sellerId])
+  @@index([buyerId])
+}
+
+model Logistics {
+  id               String          @id @default(cuid())
+  orderId          String
+  order            Order           @relation(fields: [orderId], references: [id])
+  transporterId    String?
+  transporter      User?           @relation("Driver", fields: [transporterId], references: [id])
+  vehicleNumber    String?
+  driverName       String?
+  driverPhone      String?
+  pickupTime       DateTime?
+  eta              DateTime?
+  status           LogisticsStatus @default(PENDING)
+  pickupLocation   String?
+  deliveryLocation String?
+  proofOfPickup    String[]        @default([])
+  proofOfDelivery  String[]        @default([])
+  damageInfo       String?
+  updatedAt        DateTime        @updatedAt
+  createdAt        DateTime        @default(now())
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  orderId   String
+  order     Order         @relation(fields: [orderId], references: [id])
+  kind      String        @default("FINAL") // ADVANCE | FINAL
+  amount    Float
+  status    PaymentStatus @default(PENDING)
+  payerId   String?
+  payer     User?         @relation("Payer", fields: [payerId], references: [id])
+  payeeId   String?
+  payee     User?         @relation("Payee", fields: [payeeId], references: [id])
+  dueDate   DateTime?
+  paidAt    DateTime?
+  reference String? // UPI txn id / gateway ref
+  createdAt DateTime      @default(now())
+
+  @@index([orderId])
+}
+
+model Dispute {
+  id          String        @id @default(cuid())
+  disputeNo   String        @unique
+  raisedById  String
+  raisedBy    User          @relation(fields: [raisedById], references: [id])
+  orderId     String?
+  order       Order?        @relation(fields: [orderId], references: [id])
+  lotId       String?
+  lot         Lot?          @relation(fields: [lotId], references: [id])
+  type        DisputeType
+  description String
+  status      DisputeStatus @default(OPEN)
+  evidence    String[]      @default([])
+  resolution  String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([status])
+}
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id])
+  title     String        @default("AgriLink Assistant")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id])
+  role      String // user | assistant | tool
+  content   String
+  metadata  Json? // { toolCalls, pendingAction, ... }
+  createdAt DateTime    @default(now())
+
+  @@index([sessionId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String   @default("INFO")
+  title     String
+  body      String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
+
+// ─── Lab Testing & AI Crop Health (PS 26132 extension) ───────────────────────
+
+enum LabTestStatus {
+  DRAFT
+  REQUESTED
+  LAB_ACCEPTED
+  SAMPLE_SUBMITTED
+  TESTING
+  REPORT_READY
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+enum LabReportStatus {
+  UPLOADED
+  ANALYZED
+  SHARED
+}
+
+enum CropHealthStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum ConsultationStatus {
+  SENT
+  ANSWERED
+}
+
+model Lab {
+  id             String           @id @default(cuid())
+  name           String
+  description    String?
+  location       String
+  address        String?
+  distanceKm     Float            @default(0)
+  services       String[]         @default([])
+  supportedCrops String[]         @default([])
+  testTypes      String[]         @default([])
+  phone          String?
+  email          String?
+  website        String?
+  operatingHours String?
+  accreditation  String?
+  isVerified     Boolean          @default(false)
+  rating         Float            @default(4)
+  approxPrice    Int?
+  turnaroundDays Int?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  requests       LabTestRequest[]
+  reports        LabReport[]
+}
+
+model LabTestRequest {
+  id                 String          @id @default(cuid())
+  requestNo          String          @unique
+  farmerId           String
+  farmer             User            @relation("LabRequests", fields: [farmerId], references: [id])
+  crop               String
+  variety            String?
+  lotId              String?
+  lot                Lot?            @relation(fields: [lotId], references: [id])
+  location           String?
+  problemCategory    String
+  problemDescription String
+  symptoms           String?
+  dateNoticed        DateTime?
+  affectedAreaPct    Int?
+  severity           String?
+  preferredLabId     String?
+  preferredLab       Lab?            @relation(fields: [preferredLabId], references: [id])
+  preferredDate      DateTime?
+  additionalNotes    String?
+  status             LabTestStatus   @default(DRAFT)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  images             CropHealthImage[]
+  reports            LabReport[]
+  cases              CropHealthCase[]
+
+  @@index([farmerId])
+  @@index([status])
+}
+
+model LabReport {
+  id            String          @id @default(cuid())
+  reportNo      String          @unique
+  farmerId      String
+  farmer        User            @relation("LabReports", fields: [farmerId], references: [id])
+  testRequestId String?
+  testRequest   LabTestRequest? @relation(fields: [testRequestId], references: [id])
+  labId         String?
+  lab           Lab?            @relation(fields: [labId], references: [id])
+  lotId         String?
+  lot           Lot?            @relation(fields: [lotId], references: [id])
+  crop          String
+  testType      String
+  reportDate    DateTime?
+  fileName      String // original name shown to the farmer
+  storedName    String // server-generated storage name — never client-supplied
+  mimeType      String
+  fileSize      Int
+  status        LabReportStatus @default(UPLOADED)
+  notes         String?
+  uploadedAt    DateTime        @default(now())
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  analysis      AIReportAnalysis?
+  cases         CropHealthCase[]
+
+  @@index([farmerId])
+}
+
+model CropHealthImage {
+  id         String          @id @default(cuid())
+  requestId  String?
+  request    LabTestRequest? @relation(fields: [requestId], references: [id])
+  farmerId   String
+  farmer     User            @relation("CropImages", fields: [farmerId], references: [id])
+  fileName   String
+  storedName String
+  mimeType   String
+  fileSize   Int
+  caption    String?
+  createdAt  DateTime        @default(now())
+}
+
+model AIReportAnalysis {
+  id                      String          @id @default(cuid())
+  reportId                String          @unique
+  report                  LabReport       @relation(fields: [reportId], references: [id])
+  summary                 String
+  abnormalFindings        String[]        @default([])
+  possibleCauses          String[]        @default([])
+  cropImpact              String
+  recommendedActions      String[]        @default([])
+  prevention              String
+  treatmentCategories     String[]        @default([])
+  confidence              String // High | Medium | Low
+  confidenceReason        String
+  expertReviewRecommended Boolean         @default(true)
+  expertNote              String?
+  model                   String          @default("agrilink-offline-analysis-v1")
+  analysisTimestamp       DateTime        @default(now())
+  // What the AI actually read from the report file (transparency, no fabrication).
+  extractedFrom           String          @default("none") // pdf-text | pdf-no-text | image | missing | none
+  extractedChars          Int             @default(0)
+  extractedTextSnippet    String?         // first ~1500 chars of the extracted text
+  createdAt               DateTime        @default(now())
+  caseFor                 CropHealthCase?
+}
+
+model CropHealthCase {
+  id            String              @id @default(cuid())
+  caseNo        String              @unique
+  farmerId      String
+  farmer        User                @relation("CropCases", fields: [farmerId], references: [id])
+  requestId     String?
+  request       LabTestRequest?     @relation(fields: [requestId], references: [id])
+  reportId      String?
+  report        LabReport?          @relation(fields: [reportId], references: [id])
+  aiAnalysisId  String?   @unique
+  aiAnalysis    AIReportAnalysis?   @relation(fields: [aiAnalysisId], references: [id])
+  crop          String
+  problem       String
+  labName       String?
+  testType      String?
+  actionTaken   String?
+  status        CropHealthStatus    @default(OPEN)
+  resolvedAt    DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  consultations ExpertConsultation[]
+
+  @@index([farmerId])
+}
+
+// ─── Crop Planner (season-long lifecycle, acreage allocation) ────────────────
+
+// One season-long plan for a crop on a farm: sowing date, the tap-to-inspect
+// lifecycle stages, the care protocol checklist and the pest scan. The stages
+// are stored as JSON because they are display data derived from the crop's
+// agronomy profile (src/lib/cropGuide.ts), not something we query across.
+model CropPlan {
+  id                 String          @id @default(cuid())
+  farmerId           String
+  farmer             User            @relation("CropPlans", fields: [farmerId], references: [id])
+  cropId             String
+  crop               Crop            @relation(fields: [cropId], references: [id])
+  lotId              String?         @unique
+  lot                Lot?            @relation(fields: [lotId], references: [id])
+  title              String // e.g. "Tomato Lot #TM-8942"
+  cropLabel          String // e.g. "Tomato (Arka Rakshak)"
+  variety            String?
+  season             String          @default("Kharif") // Kharif | Rabi | Zaid
+  sowingDate         DateTime
+  harvestWindowStart DateTime
+  harvestWindowEnd   DateTime
+  farmHoldingAcres   Float           @default(1.5)
+  allocatedAcres     Float           @default(1.5)
+  stageIndex         Int             @default(1) // 1-based current stage
+  stages             Json            @default("[]")
+  careProtocols      Json            @default("[]")
+  pestScan           Json            @default("[]")
+  isActive           Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  zones              CropPlanZone[]
+  activities         PlannerActivity[]
+
+  @@index([farmerId])
+}
+
+// A plot inside the plan: how many acres, which crop, and its projected yield.
+model CropPlanZone {
+  id                 String   @id @default(cuid())
+  planId             String
+  plan               CropPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  zoneName           String
+  cropName           String
+  variety            String?
+  acreage            Float
+  healthScore        Int      @default(85)
+  projectedYieldTons Float
+  lastAction         String?
+  loggedAt           DateTime?
+  createdAt          DateTime @default(now())
+
+  @@index([planId])
+}
+
+// Append-only field log — every "Log" / "Add zone" / scan action lands here.
+model PlannerActivity {
+  id        String   @id @default(cuid())
+  planId    String
+  plan      CropPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  actorId   String
+  actor     User     @relation("PlannerActor", fields: [actorId], references: [id])
+  kind      String // STAGE_LOGGED | ZONE_ADDED | SCAN_CAPTURED | PLAN_EXPORTED
+  label     String
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([planId, createdAt])
+}
+
+model ExpertConsultation {
+  id          String              @id @default(cuid())
+  caseId      String
+  case        CropHealthCase      @relation(fields: [caseId], references: [id])
+  farmerId    String
+  farmer      User                @relation("ExpertAsks", fields: [farmerId], references: [id])
+  question    String
+  context     String?
+  status      ConsultationStatus  @default(SENT)
+  response    String?
+  respondedAt DateTime?
+  createdAt   DateTime            @default(now())
+
+  @@index([caseId])
+}
